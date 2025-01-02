@@ -1,7 +1,7 @@
 #include "Interface.H"
 #include "Utilities.H"
 #include "polygonTriangulate.H"
-
+#include <array>
 
 using namespace Foam;
 
@@ -137,7 +137,7 @@ void preciceAdapter::Interface::configureMesh(const fvMesh& mesh, const std::str
                     mesh.boundaryMesh()[patchIDs_.at(j)].localPoints();
                 const auto faceNodesSize = faceNodes.size();
                 //Allocate memory for z-coordinates
-                std::array<double, 2> z_location({0, 0});
+		std::array<double, 2> z_location = {0, 0};
                 constexpr unsigned int z_axis = 2;
 
                 // Find out about the existing planes

@@ -40,9 +40,24 @@ log "Building the OpenFOAM-preCICE adapter..."
 export ADAPTER_PREP_FLAGS
 export ADAPTER_TARGET_DIR
 
+
+# Automatically set preCICE paths using nix
+log "Detecting preCICE paths using nix..."
+PRECICE_STORE_PATH=$(nix eval --raw 'github:jiaqiwang969/nix-packages#precice' || true)
+
+if [ -n "$PRECICE_STORE_PATH" ]; then
+    export ADAPTER_PKG_CONFIG_CFLAGS="-I${PRECICE_STORE_PATH}/include"
+    export ADAPTER_PKG_CONFIG_LIBS="-L${PRECICE_STORE_PATH}/lib -lprecice"
+    log "Detected preCICE paths:"
+    log "  ADAPTER_PKG_CONFIG_CFLAGS=$ADAPTER_PKG_CONFIG_CFLAGS"
+    log "  ADAPTER_PKG_CONFIG_LIBS=$ADAPTER_PKG_CONFIG_LIBS"
+else
+    warning "Could not detect preCICE paths using nix. Check your nix configuration."
+fi
+
 # Check if pkg-config is available and get the config for preCICE
-ADAPTER_PKG_CONFIG_CFLAGS=""
-ADAPTER_PKG_CONFIG_LIBS=""
+#ADAPTER_PKG_CONFIG_CFLAGS=""
+#ADAPTER_PKG_CONFIG_LIBS=""
 #export ADAPTER_PKG_CONFIG_CFLAGS="-I/nix/store/l9z79gwanyb4gxikdw2kklf079671jx8-precice-2.5.0/include"
 #export ADAPTER_PKG_CONFIG_LIBS="-L/nix/store/l9z79gwanyb4gxikdw2kklf079671jx8-precice-2.5.0/lib -lprecice"
 

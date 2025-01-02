@@ -44,6 +44,9 @@ export ADAPTER_TARGET_DIR
 # Check if pkg-config is available and get the config for preCICE
 ADAPTER_PKG_CONFIG_CFLAGS=""
 ADAPTER_PKG_CONFIG_LIBS=""
+export ADAPTER_PKG_CONFIG_CFLAGS="-I/nix/store/p43y6r6ha1v686n3japy8zlg0350ryj4-precice-3.1.2/include"
+export ADAPTER_PKG_CONFIG_LIBS="-L/nix/store/p43y6r6ha1v686n3japy8zlg0350ryj4-precice-3.1.2/lib -lprecice"
+
 if command -v pkg-config >/dev/null 2>&1; then
     if pkg-config libprecice; then
         ADAPTER_PKG_CONFIG_CFLAGS="$(pkg-config --silence-errors --cflags libprecice)"

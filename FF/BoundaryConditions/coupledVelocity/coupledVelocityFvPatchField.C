@@ -24,7 +24,7 @@ Foam::coupledVelocityFvPatchField::coupledVelocityFvPatchField(
 : fvPatchField<vector>(p, iF),
   refValue_("refValue", dict, p.size()),
   valueFraction_(p.size(), Zero),
-  phiName_(dict.getOrDefault<word>("phi", "phi"))
+  phiName_(dict.lookupOrDefault<word>("phi", "phi"))
 {
     if (dict.found("refGradient"))
     {
@@ -161,10 +161,13 @@ Foam::coupledVelocityFvPatchField::gradientBoundaryCoeffs() const
 
 void Foam::coupledVelocityFvPatchField::write(Ostream& os) const
 {
-    fvPatchField<vector>::write(os);
-    this->writeEntry("value", os);
-    this->valueFraction().writeEntry("valueFraction", os);
-    this->refValue().writeEntry("refValue", os);
+
+	fvPatchField<vector>::write(os);
+	writeEntry(os, "value", static_cast<const fvPatchField<vector>&>(*this));
+	writeEntry(os, "valueFraction", this->valueFraction());
+	writeEntry(os, "refValue", this->refValue());
+
+
 }
 
 

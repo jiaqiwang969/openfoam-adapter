@@ -2,7 +2,8 @@
 #include "Utilities.H"
 #include "polygonTriangulate.H"
 #include "cellSet.H"
-
+#include <map>
+#include <tuple>
 
 using namespace Foam;
 
@@ -297,6 +298,7 @@ void preciceAdapter::Interface::configureMesh(const fvMesh& mesh, const std::str
                 std::vector<int> triVertIDs;
                 triVertIDs.reserve(faceField.size() * triaPerQuad * nodesPerTria);
 
+		polygonTriangulate triEngine;
                 // Triangulate all faces and collect set of nodes that form triangles,
                 // which are used to set mesh triangles in preCICE.
                 forAll(faceField, facei)

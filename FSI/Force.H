@@ -26,7 +26,7 @@ public:
         const std::string nameForce);
 
     //- Write the forces values into the buffer
-    std::size_t write(double* buffer, bool meshConnectivity, const unsigned int dim) final;
+    void write(double* buffer, bool meshConnectivity, const unsigned int dim) final;
 
     //- Read the forces values from the buffer
     void read(double* buffer, const unsigned int dim) final;

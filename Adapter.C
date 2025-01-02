@@ -10,7 +10,7 @@ preciceAdapter::Adapter::Adapter(const Time& runTime, const fvMesh& mesh)
 : runTime_(runTime),
   mesh_(mesh)
 {
-    adapterInfo("Loaded the OpenFOAM-preCICE adapter - v1.3.0.", "info");
+    adapterInfo("Loaded the OpenFOAM-preCICE adapter - v1.2.3.", "info");
 
     return;
 }
@@ -99,9 +99,9 @@ bool preciceAdapter::Adapter::configFileRead()
                     // By default, assume that no mesh connectivity is required (i.e. no nearest-projection mapping)
                     interfaceConfig.meshConnectivity = interfaceDict.lookupOrDefault<bool>("connectivity", false);
                     // Mesh connectivity only makes sense in case of faceNodes, check and raise a warning otherwise
-                    if (interfaceConfig.meshConnectivity && (interfaceConfig.locationsType == "faceCenters" || interfaceConfig.locationsType == "volumeCenters" || interfaceConfig.locationsType == "volumeCentres"))
+                    if (interfaceConfig.meshConnectivity && interfaceConfig.locationsType == "faceCenters")
                     {
-                        DEBUG(adapterInfo("Mesh connectivity is not supported for faceCenters or volumeCenters. \n"
+                        DEBUG(adapterInfo("Mesh connectivity is not supported for faceCenters. \n"
                                           "Please configure the desired interface with the locationsType faceNodes. \n"
                                           "Have a look in the adapter documentation for detailed information.",
                                           "warning"));
@@ -115,24 +115,6 @@ bool preciceAdapter::Adapter::configFileRead()
                     {
                         interfaceConfig.patchNames.push_back(patch);
                         DEBUG(adapterInfo("      - " + patch));
-                    }
-
-                    DEBUG(adapterInfo("    cellSets      : "));
-                    auto cellSets = interfaceDict.lookupOrDefault<wordList>("cellSets", wordList());
-
-                    for (auto cellSet : cellSets)
-                    {
-                        interfaceConfig.cellSetNames.push_back(cellSet);
-                        DEBUG(adapterInfo("      - " + cellSet));
-                    }
-
-                    if (!interfaceConfig.cellSetNames.empty() && !(interfaceConfig.locationsType == "volumeCenters" || interfaceConfig.locationsType == "volumeCentres"))
-                    {
-                        adapterInfo("Cell sets are not supported for locationType != volumeCenters. \n"
-                                    "Please configure the desired interface with the locationsType volumeCenters. \n"
-                                    "Have a look in the adapter documentation for detailed information.",
-                                    "warning");
-                        return false;
                     }
 
                     DEBUG(adapterInfo("    writeData    : "));
@@ -262,7 +244,7 @@ void preciceAdapter::Adapter::configure()
         DEBUG(adapterInfo("Creating the preCICE solver interface..."));
         DEBUG(adapterInfo("  Number of processes: " + std::to_string(Pstream::nProcs())));
         DEBUG(adapterInfo("  MPI rank: " + std::to_string(Pstream::myProcNo())));
-        precice_ = new precice::Participant(participantName_, preciceConfigFilename_, Pstream::myProcNo(), Pstream::nProcs());
+        precice_ = new precice::SolverInterface(participantName_, preciceConfigFilename_, Pstream::myProcNo(), Pstream::nProcs());
         DEBUG(adapterInfo("  preCICE solver interface was created."));
 
         ACCUMULATE_TIMER(timeInPreciceConstruct_);
@@ -276,7 +258,7 @@ void preciceAdapter::Adapter::configure()
             std::string nameCellDisplacement = FSIenabled_ ? FSI_->getCellDisplacementFieldName() : "default";
             bool restartFromDeformed = FSIenabled_ ? FSI_->isRestartingFromDeformed() : false;
 
-            Interface* interface = new Interface(*precice_, mesh_, interfacesConfig_.at(i).meshName, interfacesConfig_.at(i).locationsType, interfacesConfig_.at(i).patchNames, interfacesConfig_.at(i).cellSetNames, interfacesConfig_.at(i).meshConnectivity, restartFromDeformed, namePointDisplacement, nameCellDisplacement);
+            Interface* interface = new Interface(*precice_, mesh_, interfacesConfig_.at(i).meshName, interfacesConfig_.at(i).locationsType, interfacesConfig_.at(i).patchNames, interfacesConfig_.at(i).meshConnectivity, restartFromDeformed, namePointDisplacement, nameCellDisplacement);
             interfaces_.push_back(interface);
             DEBUG(adapterInfo("Interface created on mesh " + interfacesConfig_.at(i).meshName));
 
@@ -361,9 +343,12 @@ void preciceAdapter::Adapter::configure()
         // Initialize preCICE and exchange the first coupling data
         initialize();
 
+        // Read the received coupling data
+        readCouplingData();
+
         // If checkpointing is required, specify the checkpointed fields
         // and write the first checkpoint
-        if (requiresWritingCheckpoint())
+        if (isWriteCheckpointRequired())
         {
             checkpointing_ = true;
 
@@ -372,12 +357,13 @@ void preciceAdapter::Adapter::configure()
 
             // Write checkpoint (for the first iteration)
             writeCheckpoint();
+            fulfilledWriteCheckpoint();
         }
 
         // Adjust the timestep for the first iteration, if it is fixed
         if (!adjustableTimestep_)
         {
-            adjustSolverTimeStepAndReadData();
+            adjustSolverTimeStep();
         }
 
         // If the solver tries to end before the coupling is complete,
@@ -433,15 +419,23 @@ void preciceAdapter::Adapter::execute()
     advance();
 
     // Read checkpoint if required
-    if (requiresReadingCheckpoint())
+    if (isReadCheckpointRequired())
     {
         readCheckpoint();
+        fulfilledReadCheckpoint();
+    }
+
+    // Adjust the timestep, if it is fixed
+    if (!adjustableTimestep_)
+    {
+        adjustSolverTimeStep();
     }
 
     // Write checkpoint if required
-    if (requiresWritingCheckpoint())
+    if (isWriteCheckpointRequired())
     {
         writeCheckpoint();
+        fulfilledWriteCheckpoint();
     }
 
     // As soon as OpenFOAM writes the results, it will not try to write again
@@ -465,11 +459,8 @@ void preciceAdapter::Adapter::execute()
     }
     ACCUMULATE_TIMER(timeInWriteResults_);
 
-    // Adjust the timestep, if it is fixed
-    if (!adjustableTimestep_)
-    {
-        adjustSolverTimeStepAndReadData();
-    }
+    // Read the received coupling data from the buffer
+    readCouplingData();
 
     // If the coupling is not going to continue, tear down everything
     // and stop the simulation.
@@ -500,19 +491,19 @@ void preciceAdapter::Adapter::execute()
 
 void preciceAdapter::Adapter::setTimeStep()
 {
-    adjustSolverTimeStepAndReadData();
+    adjustSolverTimeStep();
 
     return;
 }
 
-void preciceAdapter::Adapter::readCouplingData(double relativeReadTime)
+void preciceAdapter::Adapter::readCouplingData()
 {
     SETUP_TIMER();
     DEBUG(adapterInfo("Reading coupling data..."));
 
     for (uint i = 0; i < interfaces_.size(); i++)
     {
-        interfaces_.at(i)->readCouplingData(relativeReadTime);
+        interfaces_.at(i)->readCouplingData();
     }
 
     ACCUMULATE_TIMER(timeInRead_);
@@ -539,14 +530,21 @@ void preciceAdapter::Adapter::initialize()
 {
     DEBUG(adapterInfo("Initializing the preCICE solver interface..."));
     SETUP_TIMER();
+    timestepPrecice_ = precice_->initialize();
+    ACCUMULATE_TIMER(timeInInitialize_);
 
-    if (precice_->requiresInitialData())
+    preciceInitialized_ = true;
+
+    if (precice_->isActionRequired(precice::constants::actionWriteInitialData()))
+    {
         writeCouplingData();
+        precice_->markActionFulfilled(precice::constants::actionWriteInitialData());
+    }
 
     DEBUG(adapterInfo("Initializing preCICE data..."));
-    precice_->initialize();
-    preciceInitialized_ = true;
-    ACCUMULATE_TIMER(timeInInitialize_);
+    REUSE_TIMER();
+    precice_->initializeData();
+    ACCUMULATE_TIMER(timeInInitializeData_);
 
     adapterInfo("preCICE was configured and initialized", "info");
 
@@ -582,13 +580,13 @@ void preciceAdapter::Adapter::advance()
     DEBUG(adapterInfo("Advancing preCICE..."));
 
     SETUP_TIMER();
-    precice_->advance(timestepSolver_);
+    timestepPrecice_ = precice_->advance(timestepSolver_);
     ACCUMULATE_TIMER(timeInAdvance_);
 
     return;
 }
 
-void preciceAdapter::Adapter::adjustSolverTimeStepAndReadData()
+void preciceAdapter::Adapter::adjustSolverTimeStep()
 {
     DEBUG(adapterInfo("Adjusting the solver's timestep..."));
 
@@ -646,8 +644,8 @@ void preciceAdapter::Adapter::adjustSolverTimeStepAndReadData()
        If the solver tries to use a bigger timestep, then it needs to use
        the same timestep as the one determined by preCICE.
     */
-    double tolerance = 1e-14;
-    if (precice_->getMaxTimeStepSize() - timestepSolverDetermined > tolerance)
+
+    if (timestepSolverDetermined < timestepPrecice_)
     {
         // Add a bool 'subCycling = true' which is checked in the storeMeshPoints() function.
         adapterInfo(
@@ -663,24 +661,20 @@ void preciceAdapter::Adapter::adjustSolverTimeStepAndReadData()
                 "warning");
         }
     }
-    else if (timestepSolverDetermined - precice_->getMaxTimeStepSize() > tolerance)
+    else if (timestepSolverDetermined > timestepPrecice_)
     {
-        // In the last time-step, we adjust to dt = 0, but we don't need to trigger the warning here
-        if (precice_->isCouplingOngoing())
-        {
-            adapterInfo(
-                "The solver's timestep cannot be larger than the coupling timestep."
-                " Adjusting from "
-                    + std::to_string(timestepSolverDetermined) + " to " + std::to_string(precice_->getMaxTimeStepSize()),
-                "warning");
-        }
-        timestepSolver_ = precice_->getMaxTimeStepSize();
+        adapterInfo(
+            "The solver's timestep cannot be larger than the coupling timestep."
+            " Adjusting from "
+                + std::to_string(timestepSolverDetermined) + " to " + std::to_string(timestepPrecice_),
+            "warning");
+        timestepSolver_ = timestepPrecice_;
     }
     else
     {
         DEBUG(adapterInfo("The solver's timestep is the same as the "
                           "coupling timestep."));
-        timestepSolver_ = precice_->getMaxTimeStepSize();
+        timestepSolver_ = timestepPrecice_;
     }
 
     // Update the solver's timestep (but don't trigger the adjustDeltaT(),
@@ -712,16 +706,29 @@ bool preciceAdapter::Adapter::isCouplingTimeWindowComplete()
     return precice_->isTimeWindowComplete();
 }
 
-bool preciceAdapter::Adapter::requiresReadingCheckpoint()
+bool preciceAdapter::Adapter::isReadCheckpointRequired()
 {
-    return precice_->requiresReadingCheckpoint();
+    return precice_->isActionRequired(precice::constants::actionReadIterationCheckpoint());
 }
 
-bool preciceAdapter::Adapter::requiresWritingCheckpoint()
+bool preciceAdapter::Adapter::isWriteCheckpointRequired()
 {
-    return precice_->requiresWritingCheckpoint();
+    return precice_->isActionRequired(precice::constants::actionWriteIterationCheckpoint());
 }
 
+void preciceAdapter::Adapter::fulfilledReadCheckpoint()
+{
+    precice_->markActionFulfilled(precice::constants::actionReadIterationCheckpoint());
+
+    return;
+}
+
+void preciceAdapter::Adapter::fulfilledWriteCheckpoint()
+{
+    precice_->markActionFulfilled(precice::constants::actionWriteIterationCheckpoint());
+
+    return;
+}
 
 void preciceAdapter::Adapter::storeCheckpointTime()
 {
@@ -1651,12 +1658,13 @@ preciceAdapter::Adapter::~Adapter()
         Info << "  (I) writing checkpoints:       " << timeInCheckpointingWrite_.str() << nl;
         Info << "  (I) reading checkpoints:       " << timeInCheckpointingRead_.str() << nl;
         Info << "  (I) writing OpenFOAM results:  " << timeInWriteResults_.str() << " (at the end of converged time windows)" << nl << nl;
-        Info << "Time exclusively in preCICE:     " << (timeInInitialize_ + timeInAdvance_ + timeInFinalize_).str() << nl;
+        Info << "Time exclusively in preCICE:     " << (timeInInitialize_ + timeInInitializeData_ + timeInAdvance_ + timeInFinalize_).str() << nl;
         Info << "  (S) initialize():              " << timeInInitialize_.str() << nl;
+        Info << "  (S) initializeData():          " << timeInInitializeData_.str() << nl;
         Info << "  (I) advance():                 " << timeInAdvance_.str() << nl;
         Info << "  (I) finalize():                " << timeInFinalize_.str() << nl;
         Info << "  These times include time waiting for other participants." << nl;
-        Info << "  See also precice-profiling on the website https://precice.org/tooling-performance-analysis.html." << nl;
+        Info << "  See also precice-<participant>-events-summary.log." << nl;
         Info << "-------------------------------------------------------------------------------------" << nl;)
 
     return;

@@ -19,26 +19,26 @@ preciceAdapter::FSI::Force::Force(
     }
     else
     {
-	    ForceOwning_.reset(new volVectorField(
-				    IOobject(
-					    nameForce,
-					    mesh_.time().timeName(),
-					    mesh,
-					    IOobject::NO_READ,
-					    IOobject::AUTO_WRITE),
-				    mesh,
-				    dimensionedVector(
-					    "fdim",
-					    dimensionSet(1, 1, -2, 0, 0, 0, 0),
-					    Foam::vector::zero)));
+        ForceOwning_ = new volVectorField(
+            IOobject(
+                nameForce,
+                mesh_.time().timeName(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::AUTO_WRITE),
+            mesh,
+            dimensionedVector(
+                "fdim",
+                dimensionSet(1, 1, -2, 0, 0, 0, 0),
+                Foam::vector::zero));
 
-	    Force_ = ForceOwning_.ptr();
+        Force_ = ForceOwning_.ptr();
     }
 }
 
-std::size_t preciceAdapter::FSI::Force::write(double* buffer, bool meshConnectivity, const unsigned int dim)
+void preciceAdapter::FSI::Force::write(double* buffer, bool meshConnectivity, const unsigned int dim)
 {
-    return this->writeToBuffer(buffer, *Force_, dim);
+    this->writeToBuffer(buffer, *Force_, dim);
 }
 
 void preciceAdapter::FSI::Force::read(double* buffer, const unsigned int dim)

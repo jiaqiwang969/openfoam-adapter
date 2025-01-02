@@ -129,9 +129,9 @@ Foam::tmp<Foam::volScalarField> preciceAdapter::FSI::ForceBase::mu() const
     }
 }
 
-std::size_t preciceAdapter::FSI::ForceBase::writeToBuffer(double* buffer,
-                                                          volVectorField& forceField,
-                                                          const unsigned int dim) const
+void preciceAdapter::FSI::ForceBase::writeToBuffer(double* buffer,
+                                                   volVectorField& forceField,
+                                                   const unsigned int dim) const
 {
     // Compute forces. See the Forces function object.
     // Stress tensor boundary field
@@ -187,7 +187,6 @@ std::size_t preciceAdapter::FSI::ForceBase::writeToBuffer(double* buffer,
                     forceField.boundaryField()[patchID][i][d];
         }
     }
-    return bufferIndex;
 }
 
 void preciceAdapter::FSI::ForceBase::readFromBuffer(double* buffer) const

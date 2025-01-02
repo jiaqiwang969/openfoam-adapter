@@ -20,7 +20,7 @@ preciceAdapter::CHT::HeatTransferCoefficient::HeatTransferCoefficient(
 }
 
 
-std::size_t preciceAdapter::CHT::HeatTransferCoefficient::write(double* buffer, bool meshConnectivity, const unsigned int dim)
+void preciceAdapter::CHT::HeatTransferCoefficient::write(double* buffer, bool meshConnectivity, const unsigned int dim)
 {
     int bufferIndex = 0;
 
@@ -69,7 +69,6 @@ std::size_t preciceAdapter::CHT::HeatTransferCoefficient::write(double* buffer, 
             }
         }
     }
-    return bufferIndex;
 }
 
 
@@ -125,7 +124,7 @@ bool preciceAdapter::CHT::HeatTransferCoefficient::isLocationTypeSupported(const
     // always return true and offload the handling to the user.
     if (meshConnectivity)
     {
-        return (this->locationType_ == LocationType::faceCenters || this->locationType_ == LocationType::faceNodes); // we currently do not support meshConnectivity for volumeCenters
+        return true;
     }
     else
     {

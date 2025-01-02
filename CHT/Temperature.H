@@ -4,7 +4,6 @@
 #include "CouplingDataUser.H"
 
 #include "fvCFD.H"
-#include "cellSet.H"
 
 namespace preciceAdapter
 {
@@ -27,7 +26,7 @@ public:
         const std::string nameT);
 
     //- Write the temperature values into the buffer
-    std::size_t write(double* buffer, bool meshConnectivity, const unsigned int dim);
+    void write(double* buffer, bool meshConnectivity, const unsigned int dim);
 
     //- Read the temperature values from the buffer
     void read(double* buffer, const unsigned int dim);

@@ -22,7 +22,7 @@
 #include "fvMesh.H"
 
 // preCICE Solver Interface
-#include <precice/precice.hpp>
+#include "precice/SolverInterface.hpp"
 
 namespace preciceAdapter
 {
@@ -41,7 +41,6 @@ private:
         std::string locationsType;
         bool meshConnectivity;
         std::vector<std::string> patchNames;
-        std::vector<std::string> cellSetNames;
         std::vector<std::string> writeData;
         std::vector<std::string> readData;
     };
@@ -55,6 +54,7 @@ private:
     clockValue timeInPreciceConstruct_;
     clockValue timeInMeshSetup_;
     clockValue timeInInitialize_;
+    clockValue timeInInitializeData_;
     clockValue timeInCheckpointingSetup_;
     clockValue timeInWrite_;
     clockValue timeInAdvance_;
@@ -106,7 +106,7 @@ private:
     std::vector<Interface*> interfaces_;
 
     //- preCICE solver interface
-    precice::Participant* precice_ = nullptr;
+    precice::SolverInterface* precice_ = NULL;
 
     //- preCICE solver interface initialized
     bool preciceInitialized_ = false;
@@ -123,6 +123,9 @@ private:
     // NOTE: Add here a pointer for your new module object
 
     // Timesteps
+
+    //- Timestep dictated by preCICE
+    double timestepPrecice_;
 
     //- Timestep used by the solver
     double timestepSolver_;
@@ -262,14 +265,13 @@ private:
     void advance();
 
     //- Read the coupling data at each interface
-    void readCouplingData(double relativeReadTime);
+    void readCouplingData();
 
     //- Write the coupling data at each interface
     void writeCouplingData();
 
     //- Adjust the timestep of the solver according to preCICE
-    // and read data associated to the calculated time step length
-    void adjustSolverTimeStepAndReadData();
+    void adjustSolverTimeStep();
 
     //- Determine if the coupling is still happening
     bool isCouplingOngoing();
@@ -278,10 +280,16 @@ private:
     bool isCouplingTimeWindowComplete();
 
     //- Determine if a checkpoint must be read
-    bool requiresReadingCheckpoint();
+    bool isReadCheckpointRequired();
 
     //- Determine if a checkpoint must be written
-    bool requiresWritingCheckpoint();
+    bool isWriteCheckpointRequired();
+
+    //- Tell preCICE that the checkpoint has been read
+    void fulfilledReadCheckpoint();
+
+    //- Tell preCICE that the checkpoint has been written
+    void fulfilledWriteCheckpoint();
 
     // Methods for checkpointing
 

@@ -34,7 +34,7 @@ void preciceAdapter::FSI::DisplacementDelta::initialize()
 }
 
 
-std::size_t preciceAdapter::FSI::DisplacementDelta::write(double* buffer, bool meshConnectivity, const unsigned int dim)
+void preciceAdapter::FSI::DisplacementDelta::write(double* buffer, bool meshConnectivity, const unsigned int dim)
 {
     /* TODO: Implement
      * We need two nested for-loops for each patch,
@@ -44,7 +44,6 @@ std::size_t preciceAdapter::FSI::DisplacementDelta::write(double* buffer, bool m
     FatalErrorInFunction
         << "Writing displacementDeltas is not supported."
         << exit(FatalError);
-    return 0;
 }
 
 // return the displacement to use later in the velocity?

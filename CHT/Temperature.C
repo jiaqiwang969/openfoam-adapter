@@ -15,34 +15,9 @@ preciceAdapter::CHT::Temperature::Temperature(
     dataType_ = scalar;
 }
 
-std::size_t preciceAdapter::CHT::Temperature::write(double* buffer, bool meshConnectivity, const unsigned int dim)
+void preciceAdapter::CHT::Temperature::write(double* buffer, bool meshConnectivity, const unsigned int dim)
 {
     int bufferIndex = 0;
-
-    if (this->locationType_ == LocationType::volumeCenters)
-    {
-        if (cellSetNames_.empty())
-        {
-            for (const auto& cell : T_->internalField())
-            {
-                buffer[bufferIndex++] = cell;
-            }
-        }
-        else
-        {
-            for (const auto& cellSetName : cellSetNames_)
-            {
-                cellSet overlapRegion(T_->mesh(), cellSetName);
-                const labelList& cells = overlapRegion.toc();
-
-                for (const auto& currentCell : cells)
-                {
-                    // Copy temperature into the buffer
-                    buffer[bufferIndex++] = T_->internalField()[currentCell];
-                }
-            }
-        }
-    }
 
     // For every boundary patch of the interface
     for (uint j = 0; j < patchIDs_.size(); j++)
@@ -79,37 +54,11 @@ std::size_t preciceAdapter::CHT::Temperature::write(double* buffer, bool meshCon
             }
         }
     }
-    return bufferIndex;
 }
 
 void preciceAdapter::CHT::Temperature::read(double* buffer, const unsigned int dim)
 {
     int bufferIndex = 0;
-
-    if (this->locationType_ == LocationType::volumeCenters)
-    {
-        if (cellSetNames_.empty())
-        {
-            for (auto& cell : T_->ref())
-            {
-                cell = buffer[bufferIndex++];
-            }
-        }
-        else
-        {
-            for (const auto& cellSetName : cellSetNames_)
-            {
-                cellSet overlapRegion(T_->mesh(), cellSetName);
-                const labelList& cells = overlapRegion.toc();
-
-                for (const auto& currentCell : cells)
-                {
-                    // Copy temperature into the buffer
-                    T_->ref()[currentCell] = buffer[bufferIndex++];
-                }
-            }
-        }
-    }
 
     // For every boundary patch of the interface
     for (uint j = 0; j < patchIDs_.size(); j++)
@@ -135,11 +84,11 @@ bool preciceAdapter::CHT::Temperature::isLocationTypeSupported(const bool meshCo
     // always return true and offload the handling to the user.
     if (meshConnectivity)
     {
-        return (this->locationType_ == LocationType::faceCenters || this->locationType_ == LocationType::faceNodes); // we currently do not support meshConnectivity for volumeCenters
+        return true;
     }
     else
     {
-        return (this->locationType_ == LocationType::faceCenters || this->locationType_ == LocationType::volumeCenters);
+        return (this->locationType_ == LocationType::faceCenters);
     }
 }
 
